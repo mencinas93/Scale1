@@ -1,0 +1,419 @@
+SET search_path TO scale1;
+
+Select * from nation
+BEGIN;
+COPY NATION FROM '/var/backups/Exam2MichaelEncinas/nation.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+select * from Region
+
+
+Select count(*) from nation
+Select count(*) from region
+Select count(*) from part
+Select count(*) from Supplier
+Select count(*) from partsupp
+Select count(*) from Customer
+Select count(*) from orders
+Select count(*) from lineitem
+
+
+
+BEGIN;
+COPY REGION FROM '/var/backups/Exam2MichaelEncinas/region.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+
+BEGIN;
+COPY PART FROM '/var/backups/Exam2MichaelEncinas/part.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+
+BEGIN;
+COPY SUPPLIER FROM '/var/backups/Exam2MichaelEncinas/supplier.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+
+BEGIN;
+COPY PARTSUPP FROM '/var/backups/Exam2MichaelEncinas/partsupp.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+
+BEGIN;
+COPY CUSTOMER FROM '/var/backups/Exam2MichaelEncinas/customer.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+
+BEGIN;
+COPY ORDERS FROM '/var/backups/Exam2MichaelEncinas/orders.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+
+Select * from Lineitem
+Select count(*) from lineitem
+
+BEGIN;
+COPY LINEITEM FROM '/var/backups/Exam2MichaelEncinas/lineitem.tbl' WITH (FORMAT csv, DELIMITER '|');
+COMMIT;
+
+
+
+ALTER TABLE REGION
+ADD PRIMARY KEY (R_REGIONKEY);
+
+-- For table NATION
+ALTER TABLE NATION
+ADD PRIMARY KEY (N_NATIONKEY);
+
+ALTER TABLE NATION
+ADD FOREIGN KEY (N_REGIONKEY) references REGION;
+
+COMMIT WORK;
+
+-- For table PART
+ALTER TABLE PART
+ADD PRIMARY KEY (P_PARTKEY);
+
+COMMIT WORK;
+
+-- For table SUPPLIER
+ALTER TABLE SUPPLIER
+ADD PRIMARY KEY (S_SUPPKEY);
+
+ALTER TABLE SUPPLIER
+ADD FOREIGN KEY (S_NATIONKEY) references NATION;
+
+COMMIT WORK;
+
+-- For table PARTSUPP
+ALTER TABLE PARTSUPP
+ADD PRIMARY KEY (PS_PARTKEY,PS_SUPPKEY);
+
+COMMIT WORK;
+
+-- For table CUSTOMER
+ALTER TABLE CUSTOMER
+ADD PRIMARY KEY (C_CUSTKEY);
+
+ALTER TABLE CUSTOMER
+ADD FOREIGN KEY (C_NATIONKEY) references NATION;
+
+COMMIT WORK;
+
+-- For table LINEITEM
+ALTER TABLE LINEITEM
+ADD PRIMARY KEY (L_ORDERKEY,L_LINENUMBER);
+
+COMMIT WORK;
+
+-- For table ORDERS
+ALTER TABLE ORDERS
+ADD PRIMARY KEY (O_ORDERKEY);
+
+COMMIT WORK;
+
+-- For table PARTSUPP
+ALTER TABLE PARTSUPP
+ADD FOREIGN KEY (PS_SUPPKEY) references SUPPLIER;
+
+COMMIT WORK;
+
+ALTER TABLE PARTSUPP
+ADD FOREIGN KEY (PS_PARTKEY) references PART;
+
+COMMIT WORK;
+
+-- For table ORDERS
+ALTER TABLE ORDERS
+ADD FOREIGN KEY (O_CUSTKEY) references CUSTOMER;
+
+COMMIT WORK;
+
+-- For table LINEITEM
+ALTER TABLE LINEITEM
+ADD FOREIGN KEY (L_ORDERKEY)  references ORDERS;
+
+
+COMMIT WORK;
+
+ALTER TABLE LINEITEM
+ADD FOREIGN KEY  (L_PARTKEY,L_SUPPKEY) references 
+        PARTSUPP;
+
+COMMIT WORK;
+
+SELECT
+    SUM(l_extendedprice) / 7.0 AS avg_yearly
+FROM
+    lineitem,
+    part
+WHERE
+    p_partkey = l_partkey
+    AND p_brand = 'Brand#23'
+    AND p_container = 'MED BOX'
+    AND l_quantity < (
+        SELECT
+            0.2 * AVG(l_quantity)
+        FROM
+            lineitem
+        WHERE
+            l_partkey = p_partkey
+    );
+
+
+EXPLAIN
+SELECT
+    SUM(l_extendedprice) / 7.0 AS avg_yearly
+FROM
+    lineitem,
+    part
+WHERE
+    p_partkey = l_partkey
+    AND p_brand = 'Brand#23'
+    AND p_container = 'MED BOX'
+    AND l_quantity < (
+        SELECT
+            0.2 * AVG(l_quantity)
+        FROM
+            lineitem
+        WHERE
+            l_partkey = p_partkey
+    );
+
+
+EXPLAIN ANALYZE
+SELECT
+    SUM(l_extendedprice) / 7.0 AS avg_yearly
+FROM
+    lineitem,
+    part
+WHERE
+    p_partkey = l_partkey
+    AND p_brand = 'Brand#23'
+    AND p_container = 'MED BOX'
+    AND l_quantity < (
+        SELECT
+            0.2 * AVG(l_quantity)
+        FROM
+            lineitem
+        WHERE
+            l_partkey = p_partkey
+    );
+explain analyze	
+-- Calculate average quantity per part key
+CREATE TABLE avg_quantity_per_part AS
+SELECT l_partkey, AVG(l_quantity) AS avg_quantity
+FROM lineitem
+GROUP By l_partkey;
+
+-- Magic set for correlated subquery
+CREATE TABLE magic_set AS
+SELECT
+    lineitem.l_extendedprice,
+    lineitem.l_partkey,
+    part.p_brand,
+    part.p_container,
+    lineitem.l_quantity,
+    avg_quantity_per_part.avg_quantity AS quantity_threshold
+FROM
+    lineitem
+JOIN
+    part ON lineitem.l_partkey = part.p_partkey
+JOIN
+    avg_quantity_per_part ON lineitem.l_partkey = avg_quantity_per_part.l_partkey;
+
+
+EXPLAIN ANALYZE
+-- Main query using magic set
+SELECT
+    SUM(l_extendedprice) / 7.0 AS avg_yearly
+FROM
+    magic_set
+WHERE
+    p_brand = 'Brand#23'
+    AND p_container = 'MED BOX'
+    AND l_quantity < 0.2 * quantity_threshold;
+
+
+select
+    n_name,
+    sum(l_extendedprice * (1 - l_discount)) as revenue
+from
+    customer,
+    orders,
+    lineitem,
+    supplier,
+    nation,
+    region
+where
+    c_custkey = o_custkey
+    and l_orderkey = o_orderkey
+    and l_suppkey = s_suppkey
+    and c_nationkey = s_nationkey
+    and s_nationkey = n_nationkey
+    and n_regionkey = r_regionkey
+    and r_name = 'ASIA'
+    and o_orderdate >= date '1994-01-01'
+    and o_orderdate < date '1994-01-01' + interval '1' year
+group by
+    n_name
+order by
+    revenue desc;
+
+
+SET search_path TO scale1;
+
+
+
+
+
+CREATE MATERIALIZED VIEW Joke1 AS
+SELECT
+    n_name,
+    SUM(l_extendedprice * (1 - l_discount)) AS revenue
+FROM
+    customer,
+    orders,
+    lineitem,
+    supplier,
+    nation,
+    region
+WHERE
+    c_custkey = o_custkey
+    AND l_orderkey = o_orderkey
+    AND l_suppkey = s_suppkey
+    AND c_nationkey = s_nationkey
+    AND s_nationkey = n_nationkey
+    AND n_regionkey = r_regionkey
+    AND r_name = 'ASIA'
+    AND o_orderdate >= DATE '1994-01-01'
+    AND o_orderdate < DATE '1994-01-01' + interval '1' year
+GROUP BY
+    n_name
+ORDER BY
+    revenue DESC;
+
+Select * from joke1
+
+
+
+CREATE TABLE CombinedData2 AS
+SELECT
+    customer.c_custkey,
+    orders.o_orderkey,
+    lineitem.l_extendedprice,
+    lineitem.l_discount,
+    supplier.s_suppkey,
+    nation.n_name,
+    region.r_name,
+    orders.o_orderdate
+FROM
+    lineitem
+    JOIN orders ON lineitem.l_orderkey = orders.o_orderkey
+    JOIN customer ON orders.o_custkey = customer.c_custkey
+    JOIN nation ON customer.c_nationkey = nation.n_nationkey
+    JOIN region ON nation.n_regionkey = region.r_regionkey
+    JOIN supplier ON lineitem.l_suppkey = supplier.s_suppkey
+    JOIN nation AS supplier_nation ON supplier.s_nationkey = supplier_nation.n_nationkey
+
+
+	
+	
+SELECT
+    nation.n_name,
+    SUM(l_extendedprice * (1 - l_discount)) AS revenue
+FROM
+    lineitem
+    JOIN orders ON lineitem.l_orderkey = orders.o_orderkey
+    JOIN customer ON orders.o_custkey = customer.c_custkey
+    JOIN nation ON customer.c_nationkey = nation.n_nationkey
+    JOIN region ON nation.n_regionkey = region.r_regionkey
+    JOIN supplier ON lineitem.l_suppkey = supplier.s_suppkey
+    JOIN nation AS supplier_nation ON supplier.s_nationkey = supplier_nation.n_nationkey
+WHERE
+    region.r_name = 'ASIA'
+    AND orders.o_orderdate >= DATE '1994-01-01'
+    AND orders.o_orderdate < DATE '1995-01-01'
+    AND customer.c_nationkey = supplier_nation.n_nationkey
+GROUP BY
+    nation.n_name
+ORDER BY
+    revenue DESC;
+	
+	
+	
+	
+	
+	
+CREATE TABLE Fact_Table5 AS
+SELECT
+    nation.n_name,
+    lineitem.l_extendedprice,
+    lineitem.l_discount,
+    region.r_name AS region_name,
+    orders.o_orderdate
+FROM
+    lineitem
+JOIN 
+    orders ON lineitem.l_orderkey = orders.o_orderkey
+JOIN 
+    customer ON orders.o_custkey = customer.c_custkey
+JOIN 
+    nation ON customer.c_nationkey = nation.n_nationkey
+JOIN 
+    region ON nation.n_regionkey = region.r_regionkey
+JOIN 
+    supplier ON lineitem.l_suppkey = supplier.s_suppkey
+JOIN 
+    nation AS supplier_nation ON supplier.s_nationkey = supplier_nation.n_nationkey
+WHERE
+    region.r_name = 'ASIA'
+    AND orders.o_orderdate >= DATE '1994-01-01'
+    AND orders.o_orderdate < DATE '1995-01-01'
+    AND customer.c_nationkey = supplier_nation.n_nationkey;
+
+Create Materialized View Total_Revenue2 AS
+SELECT
+    n_name,
+    SUM(l_extendedprice * (1 - l_discount)) AS revenue
+FROM
+    Fact_Table
+GROUP BY
+    n_name
+ORDER BY
+    revenue DESC;
+	
+Select * from Total_Revenue2
+
+CREATE TABLE _1994_Asia_Region_Sales AS
+SELECT
+    nation.n_name,
+    lineitem.l_extendedprice,
+    lineitem.l_discount,
+    region.r_name AS region_name,
+    orders.o_orderdate
+FROM
+    lineitem
+JOIN 
+    orders ON lineitem.l_orderkey = orders.o_orderkey
+JOIN 
+    customer ON orders.o_custkey = customer.c_custkey
+JOIN 
+    nation ON customer.c_nationkey = nation.n_nationkey
+JOIN 
+    region ON nation.n_regionkey = region.r_regionkey
+JOIN 
+    supplier ON lineitem.l_suppkey = supplier.s_suppkey
+JOIN 
+    nation AS supplier_nation ON supplier.s_nationkey = supplier_nation.n_nationkey
+WHERE
+    region.r_name = 'ASIA'
+    AND orders.o_orderdate >= DATE '1994-01-01'
+    AND orders.o_orderdate < DATE '1995-01-01'
+    AND customer.c_nationkey = supplier_nation.n_nationkey;
+
+Create Materialized View Total_Revenue_Asia_Region_Nation_1994_to_1995 AS
+SELECT
+    n_name,
+    SUM(l_extendedprice * (1 - l_discount)) AS revenue
+FROM
+    _1994_Asia_Region_Sales
+GROUP BY
+    n_name
+ORDER BY
+    revenue DESC;
+
+select * from Total_Revenue_Asia_Region_Nation_1994_to_1995
