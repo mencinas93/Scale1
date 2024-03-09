@@ -1,0 +1,318 @@
+SET client_encoding = 'UTF8'; /* Change to UTF8 since utf8mb4 is sql and UTF is postgres */
+/*SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
+SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
+SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='TRADITIONAL';*/
+-- The following lines are removed because they are not applicable to PostgreSQL
+DROP SCHEMA IF EXISTS sakila CASCADE; /*Ensures everything is deleted withinb*/
+CREATE SCHEMA sakila;
+
+SET search_path TO sakila;
+/*USE sakila; I dont need this for postgres i can remove it and just switch to schema*/
+
+--
+-- Table structure for table `actor`
+--
+
+CREATE TABLE actor (
+  actor_id SERIAL Primary key, /*serial is auto_incremented*/
+  first_name VARCHAR(45) NOT NULL,
+  last_name VARCHAR(45) NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP /*Time Stamp*/
+  /*PRIMARY KEY  (actor_id), */
+); /*utf8*/ /*Delete engine and charset, not used in postgres*/
+CREATE INDEX idx_actor_last_name ON actor (last_name);
+/*index created outside table*/
+
+/*I will create tables first that dont rely on foreign keys */
+
+CREATE TABLE category (
+  category_id SERIAL Primary key,
+  name VARCHAR(25) NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);  /*utf8*/
+
+CREATE TABLE country (
+  country_id Serial primary key,
+  country VARCHAR(50) NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+); /*utf8*/
+
+
+CREATE TABLE city (
+  city_id Serial primary key,
+  city VARCHAR(50) NOT NULL,
+  country_id SMALLINT NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_city_country FOREIGN KEY (country_id) REFERENCES country (country_id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+/*made city id primary key and serial then changed last update to timestamp and made inxex outisde of table*/
+create index idx_fk_country_id on city (country_id);
+
+
+CREATE TABLE address (
+  address_id Serial Primary key, /*serial is auto* also this is primary key*/
+  address VARCHAR(50) NOT NULL,
+  address2 VARCHAR(50), /*Removed Default Null because if not stated not null then null in postgres*/
+  district VARCHAR(20) NOT NULL,
+  city_id SMALLINT NOT NULL,
+  postal_code VARCHAR(10),
+  phone VARCHAR(20) NOT NULL,
+  -- Add GEOMETRY column for MySQL 5.7.5 and higher
+  -- Also include SRID attribute for MySQL 8.0.3 and higher
+  /*!50705 location GEOMETRY */ /*!80003 SRID 0 */ /*!50705 NOT NULL,*/
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  /*!50705 SPATIAL KEY `idx_location` (location),*/
+  CONSTRAINT fk_address_city FOREIGN KEY (city_id) REFERENCES city (city_id) ON DELETE RESTRICT ON UPDATE CASCADE
+); /*utf8* also delete this egine and charset*/
+  CREATE INDEX idx_fk_city_id ON address (city_id);
+ /* KEY idx_fk_city_id (city_id),*/
+--
+-- Table structure for table `customer`
+--
+CREATE TABLE language (
+  language_id Serial primary key,
+  name CHAR(20) NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP 
+); /*utf8*/
+/*do language since it dont rely on foreign keys*/
+CREATE TYPE rating_enum AS ENUM ('G', 'PG', 'PG-13', 'R', 'NC-17');
+/*create type rating_enum cause enum is not a type in postgres*/
+CREATE TYPE special_features_enum AS ENUM ('Trailers', 'Commentaries', 'Deleted Scenes', 'Behind the Scenes');
+
+CREATE TABLE film (
+  film_id Serial primary key,
+  title VARCHAR(128) NOT NULL,
+  description TEXT,
+  release_year Date, /*date instead of year*/
+  language_id Smallint NOT NULL,
+  original_language_id Smallint,
+  rental_duration Smallint NOT NULL DEFAULT 3,
+  rental_rate DECIMAL(4,2) NOT NULL DEFAULT 4.99,
+  length SMALLINT,
+  replacement_cost DECIMAL(5,2) NOT NULL DEFAULT 19.99,
+  rating rating_enum DEFAULT 'G',
+  special_features special_features_enum[] DEFAULT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_film_language FOREIGN KEY (language_id) REFERENCES language (language_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_film_language_original FOREIGN KEY (original_language_id) REFERENCES language (language_id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+create index idx_title on film(title);
+create index idx_fk_language_id on film(language_id);
+create index idx_fk_original_language_id on film(original_language_id);
+
+CREATE TABLE film_actor (
+  actor_id SMALLINT NOT NULL,
+  film_id SMALLINT NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY  (actor_id,film_id),
+  CONSTRAINT fk_film_actor_actor FOREIGN KEY (actor_id) REFERENCES actor (actor_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_film_actor_film FOREIGN KEY (film_id) REFERENCES film (film_id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+ create index idx_fk_film_id on film_actor (film_id);
+
+CREATE TABLE film_category (
+  film_id SMALLINT NOT NULL,
+  category_id Smallint NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (film_id, category_id),
+  CONSTRAINT fk_film_category_film FOREIGN KEY (film_id) REFERENCES film (film_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_film_category_category FOREIGN KEY (category_id) REFERENCES category (category_id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+/*I need foreign key to film since i wont know what film_id the rxt belongs to unless its to a primary key film id*/
+CREATE TABLE film_text (
+  film_id SMALLINT NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  PRIMARY KEY  (film_id),
+  CONSTRAINT Fk_film_text_film foreign key (film_id) references film (film_id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_full_text_data ON film_text USING GIN(to_tsvector('english', title || ' ' || description));
+
+
+CREATE TABLE customer (
+  customer_id SERIAL PRIMARY KEY,
+  store_id SMALLINT NOT NULL,
+  first_name VARCHAR(45) NOT NULL,
+  last_name VARCHAR(45) NOT NULL,
+  email VARCHAR(50),
+  address_id SMALLINT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  create_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE inventory (
+  inventory_id SERIAL PRIMARY KEY,
+  film_id SMALLINT NOT NULL,
+  store_id SMALLINT NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE payment (
+  payment_id SERIAL PRIMARY KEY,
+  customer_id SMALLINT NOT NULL,
+  staff_id SMALLINT NOT NULL,
+  rental_id INT,
+  amount DECIMAL(5,2) NOT NULL,
+  payment_date TIMESTAMP NOT NULL,
+  last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE rental (
+  rental_id SERIAL PRIMARY KEY,
+  rental_date TIMESTAMP NOT NULL,
+  inventory_id INTEGER NOT NULL,
+  customer_id SMALLINT NOT NULL,
+  return_date TIMESTAMP,
+  staff_id SMALLINT NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+CREATE TABLE staff (
+  staff_id SERIAL PRIMARY KEY,
+  first_name VARCHAR(45) NOT NULL,
+  last_name VARCHAR(45) NOT NULL,
+  address_id SMALLINT NOT NULL,
+  picture BYTEA,
+  email VARCHAR(50),
+  store_id SMALLINT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  username VARCHAR(16) NOT NULL,
+  password VARCHAR(40),
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE store (
+  store_id SERIAL PRIMARY KEY,
+  manager_staff_id SMALLINT NOT NULL,
+  address_id SMALLINT NOT NULL,
+  last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+
+/*Now i need to add foreign key constraints to tables and alter them*/
+/* need to create tables below this first before setting primary keys and foreigns keys this is due to all tables belowing relying on each other which is circular*/
+
+ALTER TABLE customer
+ADD CONSTRAINT fk_customer_store
+FOREIGN KEY (store_id)
+REFERENCES store(store_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE customer
+ADD CONSTRAINT fk_customer_address
+FOREIGN KEY (address_id)
+REFERENCES address(address_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+
+ALTER TABLE inventory
+ADD CONSTRAINT fk_inventory_film
+FOREIGN KEY (film_id)
+REFERENCES film(film_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;;
+
+ALTER TABLE inventory
+ADD CONSTRAINT fk_inventory_store
+FOREIGN KEY (store_id)
+REFERENCES store(store_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE payment
+ADD CONSTRAINT fk_payment_customer
+FOREIGN KEY (customer_id)
+REFERENCES customer(customer_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE payment
+ADD CONSTRAINT fk_payment_staff
+FOREIGN KEY (staff_id)
+REFERENCES staff(staff_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE payment
+ADD CONSTRAINT fk_payment_rental
+FOREIGN KEY (rental_id)
+REFERENCES rental(rental_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+
+ALTER TABLE rental
+ADD CONSTRAINT fk_rental_inventory
+FOREIGN KEY (inventory_id)
+REFERENCES inventory(inventory_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE rental
+ADD CONSTRAINT fk_rental_customer
+FOREIGN KEY (customer_id)
+REFERENCES customer(customer_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE rental
+ADD CONSTRAINT fk_rental_staff
+FOREIGN KEY (staff_id)
+REFERENCES staff(staff_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE staff
+ADD CONSTRAINT fk_staff_address
+FOREIGN KEY (address_id)
+REFERENCES address(address_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE staff
+ADD CONSTRAINT fk_staff_store
+FOREIGN KEY (store_id)
+REFERENCES store(store_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE store
+ADD CONSTRAINT fk_store_staff
+FOREIGN KEY (manager_staff_id)
+REFERENCES staff(staff_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE store
+ADD CONSTRAINT fk_store_address
+FOREIGN KEY (address_id)
+REFERENCES address(address_id)
+ON DELETE RESTRICT ON UPDATE CASCADE;
+
+
+/* now i need to create indexes last*/
+
+CREATE INDEX idx_fk_store_id ON customer(store_id);
+CREATE INDEX idx_fk_address_id ON customer(address_id);
+CREATE INDEX idx_last_name ON customer(last_name);
+
+CREATE INDEX idx_fk_film_id ON inventory(film_id);
+CREATE INDEX idx_store_id_film_id ON inventory(store_id,film_id);
+
+
+CREATE INDEX idx_fk_staff_id ON payment(staff_id);
+CREATE INDEX idx_fk_customer_id ON payment(customer_id);
+
+ALTER TABLE rental
+ADD CONSTRAINT UniqueKey_rental_details UNIQUE (rental_date, inventory_id, customer_id);
+CREATE INDEX idx_fk_inventory_id ON rental(inventory_id);
+CREATE INDEX idx_Rental_fk_customer_id ON rental(customer_id);
+CREATE INDEX idx_Rental_fk_staff_id ON rental(staff_id);
+/*since 2 of 3 index for rental alreay exist in payment then i must change names*/
+/*Change name her on index */
+CREATE INDEX idx_fk_store_id_staff ON staff(store_id);
+CREATE INDEX idx_fk_address_id_staff ON staff(address_id);
+
+
+CREATE UNIQUE INDEX idx_unique_manager ON store(manager_staff_id);
+CREATE INDEX idx_fk_address_id_store ON store(address_id);
+
+
